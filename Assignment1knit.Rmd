@@ -1,0 +1,111 @@
+---
+title: "First Assignment"
+author: "Femi and Esteban"
+date: "10/25/2021"
+output: 
+    html_document
+    theme: readable
+    toc: true
+    toc_depth: 3
+    toc_float: true
+---
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Research Question
+
+How does Mexico’s economic development from the economic liberalization policies of the early 1990’s to date, translate into reduction of poverty?
+
+# Prior Research
+
+“Economic growth is the most powerful instrument for reducing poverty and improving the quality of life in developing countries” (OECD 2007)
+https://www.oecd.org/derec/unitedkingdom/40700982.pdf
+ 
+“Economic growth is the single most important factor influencing poverty. Numerous statistical studies have found a strong association between national per capita income and national poverty indicators, using both income and nonincome measures of poverty” (Ames, et all 2001)
+https://www.imf.org/external/pubs/ft/exrp/macropol/eng/
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Data
+
+Our analysis will be constrained to the study of Mexico in the period from 1990 to 2020, including Gross National Income and poverty, including States within Mexico to understand variances of the effects of economic development by region and also including the population data of Mexico Within that timeframe.
+
+
+* Year -continuous
+* Mexico's Gross National Income GNI -continuous 
+* % GNI increase/decrease -continuous
+* GNI per capita (MX pesos por persona) -continuous
+* GNI per capita % Growth/decline  -continuous
+*Population -continuous
+*% Growth/decline population -continuous
+* Poverty  % population Under US $5.50 Per Day -continuous
+* Mostly Formal or Informal Economy -categorical
+* North poverty reduction / increase -categorical
+* Center poverty reduction / increase -categorical
+* South poverty reduction / increase  -categorical
+
+
+
+
+
+# Load Data
+
+Library
+
+library(tidyverse)
+library(tidycensus)
+library(readxl)
+library(knitr)
+library(ipumsr)
+library("readxl")
+library("xlsx")
+
+
+EconDev <- read_excel("EconDev_poverty.xlsx")
+
+
+
+We requested the information from IPUMs International, downloaded xml file and loaded the data set: 
+
+
+Household <- data %>% filter(grepl('1', PERNUM))
+
+rm(ipumsi_00001.dat.gz)
+
+usethis::use_git_config(user.name = "EstebanGarza", user.email = "esteban_garza@gsd.harvard.edu")
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# References
+
+
+“Economic Growth: The Impact on Poverty Reduction ... - OECD.” Accessed October 26, 2021. https://www.oecd.org/derec/unitedkingdom/40700982.pdf. 
+
+Ames, Brian et all 2001“Macroeconomic Policy and Poverty Reduction.” International Monetary Fund. Accessed October 26, 2021. https://www.imf.org/external/pubs/ft/exrp/macropol/eng/. 
+
+“Treinta Años De Evolución De Las Carencias Sociales a ...” Accessed October 25, 2021. https://www.coneval.org.mx/Medicion/Documents/Carencias_sociales_censales_90_20/Presentacion_evolucion_carencias_sociales_censales_1990_2020.pdf. 
+
+IPUMS. Codebook for an IPUMS International Data Extract. Time Period:	1960-2010. Minnesota Population Center. Integrated Public Use Microdata Series, International: Version 7.3 [dataset]. Minneapolis, MN: IPUMS, 2020. https://doi.org/10.18128/D020.V7.2. Date of Production:	October 25, 2021 https://international.ipums.org/international-action/data_requests/download
+
+
+```{r cars}
+
+
+
+```
+
+## ¿
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+
