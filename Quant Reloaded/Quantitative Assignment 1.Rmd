@@ -243,23 +243,28 @@ ggplot(Urban_Rural) +
 ```
 
 
+#Identify one of your continuous variables as your dependent variable. Test the relationship between your dependent variable and each of the other variables in your dataset. Indicate the significance and (if appropriate) the magnitude of each relationship.
+
+#If you really want to estimate a model predicting a categorical variable, come talk to me about it well before this assignment is due. I will try to talk you out of it and, failing that, modify your assignment to allow you to use logistic regression.
+
+#Dependent Variable: 
+
+#Number of Children -NCHILD
+
+#test relationship with: 
+
+#Income -INCEARN_HEAD
+#Literacy -
+#Rural-Urban -
+#People in Household -PERSONS
+
+
+
+
+
 ```{r}
-Identify one of your continuous variables as your dependent variable. Test the relationship between your dependent variable and each of the other variables in your dataset. Indicate the significance and (if appropriate) the magnitude of each relationship.
-
-If you really want to estimate a model predicting a categorical variable, come talk to me about it well before this assignment is due. I will try to talk you out of it and, failing that, modify your assignment to allow you to use logistic regression.
-
-Dependent Variable: 
-
-Number of Children -Number_of_children_hist_df 
-
-test relationship with: 
-
-Income -Head_ofhousehold_Incomehist_df
-Literacy -Head_of_householdliteracy
-Rural-Urban -Urban_Rural
-People in Household -Household_pop_hist_df
 
 
-corrs <- svycor(Number_of_children_hist_df + Head_ofhousehold_Incomehist_df + Household_pop_hist_df, design = svy_data, sig.stats = TRUE)
+corrs <- svycor(~NCHILD + INCEARN_HEAD + PERSONS, design = svy_data, sig.stats = TRUE)
 
-
+```
