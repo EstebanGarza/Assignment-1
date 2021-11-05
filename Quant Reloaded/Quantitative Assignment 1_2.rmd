@@ -1,0 +1,279 @@
+---
+title: "Mexico project"
+author: "Olufemi Olamijulo & Esteban Garza"
+date: "10/25/2021"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+# Introduction
+
+We'll use these libraries.
+
+
+```{r, message=FALSE}
+library(tidyverse)
+library(tidycensus)
+library(readxl)
+library(knitr)
+library(ipumsr)
+library(srvyr)
+library(survey)
+library(jtools)
+library(weights)
+library(htmltools)
+```
+
+
+
+## A research question you could answer using regression analysis on this dataset
+
+How literacy and levels of income of the head of Household relate to number of children and number of people in each household.
+
+## Citations for two research articles that address a question related to the one you’ve identified.
+
+* Tuirán, R., Partida, Mojarro, O., & Zúñiga, E. (2004). Fertility in Mexico: trends and forecast.https://www.un.org/development/desa/pd/sites/www.un.org.development.desa.pd/files/unpd_egm_200203_countrypapers_fertility_in_mexico_tuiran_partida_mojarro_zuniga.pdf
+
+* Cummings, P.M. (2016). Child Labor and Household Composition : Determinants of Child Labor in Mexico.
+
+## The definition of your sample population (e.g. who is included and who isn't).
+
+This sample includes Data at the Household level Specifically on head of household regardless of who that is (father, mother).Supporting incomes from other members of the household have been excluded. The data is only for the year 2015. This dataset also excludes incomes less than ME$100 and more than $500,000.
+
+## Data
+
+For this analysis, we are using microdata from 2015 sample for Mexico as downloaded from IPUMS International: Minnesota Population Center. Integrated Public Use Microdata Series, International: Version 7.3 [dataset]. Minneapolis, MN: IPUMS, 2020.https://doi.org/10.18128/D020.V7.2
+
+we are going to analyze the following variables:
+
+1. PERSONS:Number of people per household(Continuous), 
+2. URBAN:Urban-Rural status (Categorical)
+3. NCHILD: Number of children per household (Continuous), 
+4. LIT_HEAD:Literacy of Head of Household (Categorical)
+5. INCEARN_HEAD:Earned Income for Head of Household(Continuous)
+
+## The number of observations (rows) in your dataset.
+
+The number of observations for the complete dataset is 4,575,476 households. 
+
+# Load data
+
+```{r}
+ddi <- read_ipums_ddi("ipumsi_00007.xml")
+data <- read_ipums_micro(ddi)%>% 
+  na_if(99999999) %>%
+  na_if(99999998) %>%
+  filter(PERNUM == 1) %>%
+  mutate(URBAN = as_factor(URBAN)) %>%
+  mutate(LIT_HEAD = as_factor(LIT_HEAD))%>%
+  mutate(GEO1_MX = as_factor(GEO1_MX))
+
+
+data_wo_outliers <- data %>%
+  filter(INCEARN_HEAD < 500000)
+```
+
+This dataset includes 2,778,356 household survey respondents.
+
+
+```{r}
+svy_data <- data %>%
+  as_survey_design(weights = HHWT)
+
+svy_data_wo_outliers <- data_wo_outliers %>%
+  as_survey_design(weights = HHWT)
+
+
+```
+
+
+
+```{r}
+household_pop_mean <- svy_data %>%
+  summarise(mean = survey_mean(PERSONS, vartype = c("ci", "var"), na.rm = TRUE))
+
+children_per_household_mean <- svy_data %>%
+  summarise(mean = survey_mean(NCHILD, vartype = c("ci", "var"), na.rm = TRUE))
+
+earnedincome_per_head_mean <- svy_data %>%
+  summarise(mean = survey_mean(INCEARN_HEAD, vartype = c("ci", "var"), na.rm = TRUE))
+
+```
+
+```{r}
+household_pop_quants <- svy_data %>%
+  summarise(quants = survey_quantile(PERSONS, 
+                                     quantiles =  c(0.25, 0.5, 0.75),
+                                     vartype = NULL))
+
+children_per_household_quants <- svy_data %>%
+summarise(quants = survey_quantile(as.numeric(as.factor(NCHILD)),
+                                     quantiles =  c(0.25, 0.5, 0.75),
+                                     vartype = NULL))
+ 
+ 
+earnedincome_per_head_quants <- svy_data %>%
+summarise(quants = survey_quantile(as.numeric(as.factor(INCEARN_HEAD)),
+                                     quantiles =  c(0.25, 0.5, 0.75),
+                                     vartype = NULL))
+
+```
+
+```{r}
+mean_summary <- rbind(household_pop_mean, children_per_household_mean, earnedincome_per_head_mean) %>%
+    mutate(variable = c("Number of household members",
+                      "Number of Children",
+                      "Head of Household's Income"))
+
+quant_summary <- rbind(household_pop_quants, children_per_household_quants, earnedincome_per_head_quants) %>%
+    mutate(variable = c("Number of household members",
+                      "Number of Children",
+                      "Head of Household's Income"))
+
+summary <- left_join(mean_summary, quant_summary) %>%
+  mutate(sd = mean_var^0.5) %>%
+  mutate(IQR = quants_q75 - quants_q25) %>%
+  rename(median = quants_q50) %>%
+  select(variable, mean, mean_low, mean_upp, median, sd, IQR)
+
+kable(summary, digits=2)
+```
+
+## Income histogram
+
+```{r}
+Head_ofhousehold_Incomehist <- svyhist(~INCEARN_HEAD, 
+                                       design = svy_data,
+                                       breaks = 100,
+                                       freq = TRUE)
+
+Head_ofhousehold_Incomehist_df <- tibble(mids = Head_ofhousehold_Incomehist$mids,
+                              counts = Head_ofhousehold_Incomehist$counts)
+
+ggplot(Head_ofhousehold_Incomehist_df) +
+  geom_bar(aes(x = mids, y = counts),
+           stat = "identity") +
+  theme_bw() +
+  scale_x_continuous(name = "Income for Head of Household (Mex$)",
+                     limits = c(0, 100000)) +
+  scale_y_continuous(name = "Estimated number of Households (weighted)")
+```
+
+
+```{r}
+Household_pop_hist <- svyhist(~PERSONS, design = svy_data,
+                            freq = TRUE)
+
+Household_pop_hist_df <- tibble(mids = Household_pop_hist$mids,
+                              counts = Household_pop_hist$counts)
+
+ggplot(Household_pop_hist_df) +
+  geom_bar(aes(x = mids, y = counts),
+           stat = "identity") +
+  theme_bw() +
+  scale_x_continuous(name = "Number of people per household") +
+  scale_y_continuous(name = "Estimated number of Households (weighted)")
+
+Number_of_children_hist <- svyhist(~NCHILD, design = svy_data,
+                            freq = TRUE)
+
+Number_of_children_hist_df <- tibble(mids = Number_of_children_hist$mids,
+                              counts = Number_of_children_hist$counts)
+
+ggplot(Number_of_children_hist_df) +
+  geom_bar(aes(x = mids, y = counts),
+           stat = "identity") +
+  theme_bw() +
+  scale_x_continuous(name = "Number of children per household") +
+  scale_y_continuous(name = "Estimated number of Households (weighted)")
+```
+
+```{r}
+#Categorical Variables
+Urban_Rural <- svy_data %>%
+  group_by(URBAN) %>%
+  summarise(share = survey_prop(vartype = "ci"))
+
+kable(Urban_Rural,digits = 3)
+Head_of_householdliteracy <- svy_data %>%
+  group_by(LIT_HEAD) %>%
+  summarise(share = survey_prop(vartype = "ci"))
+
+kable(Head_of_householdliteracy,digits = 3)
+
+State <- svy_data %>%
+  group_by(GEO1_MX) %>%
+  summarise(share = survey_prop(vartype = "ci"))
+
+kable(State, digits = 3)
+```
+
+```{r}
+ggplot(State) +
+  geom_bar(aes(x = `GEO1_MX`, 
+               y = `share`),
+           stat = "identity") +
+  geom_errorbar(aes(x = `GEO1_MX`, 
+               y = `share`,
+               ymin = `share_low`,
+               ymax = `share_upp`),
+           stat = "identity") +
+  scale_y_continuous(name = "Data contribution by state", labels = scales::percent) +
+  #scale_x_discreet(name = "States in Mexico") +
+  theme_bw()
+
+ggplot(Head_of_householdliteracy) +
+  geom_bar(aes(x = `LIT_HEAD`, 
+               y = `share`),
+           stat = "identity") +
+  geom_errorbar(aes(x = `LIT_HEAD`, 
+               y = `share`,
+               ymin = `share_low`,
+               ymax = `share_upp`),
+           stat = "identity") +
+  scale_y_continuous(name = "Share of Mexican Households",labels = scales::percent) +
+  scale_x_discrete(name = "Head of Household Literacy") +
+  theme_bw()
+
+ggplot(Urban_Rural) +
+  geom_bar(aes(x = `URBAN`, 
+               y = `share`),
+           stat = "identity") +
+  geom_errorbar(aes(x = `URBAN`, 
+               y = `share`,
+               ymin = `share_low`,
+               ymax = `share_upp`),
+           stat = "identity") +
+  scale_y_continuous(name = "Share of Mexican Households",labels = scales::percent) +
+  scale_x_discrete(name = "Urban/Rural Status") +
+  theme_bw()
+```
+
+
+
+Identify one of your continuous variables as your dependent variable. Test the relationship between your dependent variable and each of the other variables in your dataset. Indicate the significance and (if appropriate) the magnitude of each relationship.
+
+If you really want to estimate a model predicting a categorical variable, come talk to me about it well before this assignment is due. I will try to talk you out of it and, failing that, modify your assignment to allow you to use logistic regression.
+
+Dependent Variable: 
+
+Number of Children -Number_of_children_hist_df 
+
+test relationship with: 
+
+Income -Head_ofhousehold_Incomehist_df
+Literacy -Head_of_householdliteracy
+Rural-Urban -Urban_Rural
+People in Household -Household_pop_hist_df
+
+
+corrs <- svycor(Number_of_children_hist_df + Head_ofhousehold_Incomehist_df + Household_pop_hist_df, design = svy_data, sig.stats = TRUE)
+
