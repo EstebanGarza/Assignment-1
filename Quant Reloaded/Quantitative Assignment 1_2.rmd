@@ -66,7 +66,7 @@ The number of observations for the complete dataset is 4,575,476 households.
 
 # Load data
 
-```{r}
+```{r message=FALSE}
 ddi <- read_ipums_ddi("ipumsi_00007.xml")
 data <- read_ipums_micro(ddi)%>% 
   na_if(99999999) %>%
@@ -84,7 +84,7 @@ data_wo_outliers <- data %>%
 This dataset includes 2,778,356 household survey respondents.
 
 
-```{r}
+```{r message=FALSE}
 svy_data <- data %>%
   as_survey_design(weights = HHWT)
 
@@ -96,7 +96,7 @@ svy_data_wo_outliers <- data_wo_outliers %>%
 
 
 
-```{r}
+```{r message=FALSE}
 household_pop_mean <- svy_data %>%
   summarise(mean = survey_mean(PERSONS, vartype = c("ci", "var"), na.rm = TRUE))
 
@@ -108,7 +108,7 @@ earnedincome_per_head_mean <- svy_data %>%
 
 ```
 
-```{r}
+```{r message=FALSE}
 household_pop_quants <- svy_data %>%
   summarise(quants = survey_quantile(PERSONS, 
                                      quantiles =  c(0.25, 0.5, 0.75),
@@ -127,7 +127,7 @@ summarise(quants = survey_quantile(as.numeric(as.factor(INCEARN_HEAD)),
 
 ```
 
-```{r}
+```{r message=FALSE}
 mean_summary <- rbind(household_pop_mean, children_per_household_mean, earnedincome_per_head_mean) %>%
     mutate(variable = c("Number of household members",
                       "Number of Children",
@@ -149,7 +149,7 @@ kable(summary, digits=2)
 
 ## Income histogram
 
-```{r}
+```{r message=FALSE}
 Head_ofhousehold_Incomehist <- svyhist(~INCEARN_HEAD, 
                                        design = svy_data,
                                        breaks = 100,
@@ -163,12 +163,12 @@ ggplot(Head_ofhousehold_Incomehist_df) +
            stat = "identity") +
   theme_bw() +
   scale_x_continuous(name = "Income for Head of Household (Mex$)",
-                     limits = c(0, 100000)) +
+                     limits = c(0, 500000)) +
   scale_y_continuous(name = "Estimated number of Households (weighted)")
 ```
 
 
-```{r}
+```{r message=FALSE}
 Household_pop_hist <- svyhist(~PERSONS, design = svy_data,
                             freq = TRUE)
 
@@ -196,7 +196,7 @@ ggplot(Number_of_children_hist_df) +
   scale_y_continuous(name = "Estimated number of Households (weighted)")
 ```
 
-```{r}
+```{r message=FALSE}
 #Categorical Variables
 Urban_Rural <- svy_data %>%
   group_by(URBAN) %>%
@@ -216,7 +216,7 @@ State <- svy_data %>%
 kable(State, digits = 3)
 ```
 
-```{r}
+```{r message=FALSE}
 ggplot(State) +
   geom_bar(aes(x = `GEO1_MX`, 
                y = `share`),
@@ -265,15 +265,92 @@ If you really want to estimate a model predicting a categorical variable, come t
 
 Dependent Variable: 
 
-Number of Children -Number_of_children_hist_df 
+Number of Children -NCHILD 
 
 test relationship with: 
 
-Income -Head_ofhousehold_Incomehist_df
-Literacy -Head_of_householdliteracy
-Rural-Urban -Urban_Rural
-People in Household -Household_pop_hist_df
+Income -INCEARN_HEAD
+Literacy -LIT_HEAD
+Rural-Urban -URBAN
+People in Household -PERSONS
 
 
-corrs <- svycor(Number_of_children_hist_df + Head_ofhousehold_Incomehist_df + Household_pop_hist_df, design = svy_data, sig.stats = TRUE)
+#Correlation on continuous variables
+```{r message=FALSE, warning=FALSE}
+corrs <- svycor(~NCHILD + INCEARN_HEAD +PERSONS, design = svy_data, sig.stats = TRUE)
+
+corrs$cors
+
+corrs$p.values
+```
+
+*This correlation shows a relationship between the number of children in a household, the income of the head of the household and the number of people within the same household. 
+*It demonstrates that an increase in the income results in an decrease in children. 
+
+
+```{r message=FALSE, warning=FALSE}
+corrs$std.err
+```
+
+
+```{r message=FALSE, warning=FALSE}
+corrs_ci_low <- corrs$cors - 1.96*corrs$std.err
+
+corrs_ci_upp <- corrs$cors + 1.96*corrs$std.err
+
+corrs_ci_low
+
+corrs_ci_upp 
+
+
+```
+
+```{r}
+corrs_low_df <- as_tibble(corrs_ci_low) %>%
+  mutate(variable = c("NCHILD", "INCEARN_HEAD", "PERSONS")) %>%
+  rename(NCHILD_low = NCHILD,
+        INCEARN_HEAD_low = INCEARN_HEAD,
+         PERSONS_low = PERSONS)
+
+corrs_upp_df <- as_tibble(corrs_ci_upp) %>%
+  mutate(variable = c("NCHILD", "INCEARN_HEAD", "PERSONS")) %>%
+  rename(NCHILD_upp = NCHILD,
+         INCEARN_HEAD_upp = INCEARN_HEAD,
+         PERSONS_upp = PERSONS)
+
+corrs_pretty_int <- left_join(corrs_low_df, corrs_upp_df) %>%
+  mutate(`NCHILD` = paste(prettyNum(NCHILD_low, digits = 3), 
+                                 " to ", 
+                                 prettyNum(NCHILD_upp, digits = 3))) %>%
+  mutate(`INCEARN_HEAD` = paste(prettyNum(INCEARN_HEAD_low, digits = 3), 
+                                 " to ", 
+                                 prettyNum(INCEARN_HEAD_upp, digits = 3))) %>%
+  mutate(PERSONS = paste(prettyNum(PERSONS_low, digits = 3), 
+                                 " to ", 
+                                 prettyNum(PERSONS_upp, digits = 3))) %>%
+  select(variable, `NCHILD`, `INCEARN_HEAD`, PERSONS)
+  
+kable(corrs_pretty_int)
+```
+
+#Difference in means / regression on categorical variables
+
+
+##Difference in means on categorical variable
+
+
+
+```{r}
+svyttest(NCHILD ~ URBAN, svy_data)
+```
+
+##Regression on categorical variable
+
+```{r}
+
+LIT_MODEL <- svyglm(NCHILD ~ LIT_HEAD, svy_data)
+
+summary(LIT_MODEL)
+
+```
 
