@@ -354,3 +354,23 @@ summary(LIT_MODEL)
 
 ```
 
+# Multivariate Regression
+
+Number of Children -NCHILD 
+Income -INCEARN_HEAD
+Literacy -LIT_HEAD
+Rural-Urban -URBAN
+People in Household -PERSONS
+
+```{r  message=FALSE, warning=FALSE}
+
+
+svyglm() 
+
+full_model <- svyglm(NCHILD ~ LIT_HEAD + INCEARN_HEAD + URBAN + PERSONS, svy_data)
+
+summary(full_model)
+
+
+```
+
