@@ -1,0 +1,553 @@
+---
+title: "Mexico project"
+author: "Olufemi Olamijulo & Esteban Garza"
+date: "10/25/2021"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+# Introduction
+
+We'll use these libraries.
+
+
+```{r, message=FALSE}
+library(tidyverse)
+library(tidycensus)
+library(readxl)
+library(knitr)
+library(ipumsr)
+library(srvyr)
+library(survey)
+library(jtools)
+#library(weights)
+library(htmltools)
+library(huxtable)
+library(interactions)
+```
+
+
+
+## A research question you could answer using regression analysis on this dataset
+
+How literacy and levels of income of the head of Household relate to number of children and number of people in each household.
+
+## Citations for two research articles that address a question related to the one you’ve identified.
+
+* Tuirán, R., Partida, Mojarro, O., & Zúñiga, E. (2004). Fertility in Mexico: trends and forecast.https://www.un.org/development/desa/pd/sites/www.un.org.development.desa.pd/files/unpd_egm_200203_countrypapers_fertility_in_mexico_tuiran_partida_mojarro_zuniga.pdf
+
+* Cummings, P.M. (2016). Child Labor and Household Composition : Determinants of Child Labor in Mexico.
+
+## The definition of your sample population (e.g. who is included and who isn't).
+
+This sample includes Data at the Household level Specifically on head of household regardless of who that is (father, mother).Supporting incomes from other members of the household have been excluded. The data is only for the year 2015. This dataset also excludes incomes less than ME$100 and more than $500,000.
+
+## Data
+
+For this analysis, we are using microdata from 2015 sample for Mexico as downloaded from IPUMS International: Minnesota Population Center. Integrated Public Use Microdata Series, International: Version 7.3 [dataset]. Minneapolis, MN: IPUMS, 2020.https://doi.org/10.18128/D020.V7.2
+
+we are going to analyze the following variables:
+
+1. PERSONS:Number of people per household(Continuous), 
+2. URBAN:Urban-Rural status (Categorical)
+3. NCHILD: Number of children per household (Continuous), 
+4. LIT_HEAD:Literacy of Head of Household (Categorical)
+5. INCEARN_HEAD:Earned Income for Head of Household(Continuous)
+
+## The number of observations (rows) in your dataset.
+
+The number of observations for the complete dataset is 4,575,476 households. 
+
+# Load data
+
+```{r message=FALSE}
+ddi <- read_ipums_ddi("ipumsi_00007.xml")
+data <- read_ipums_micro(ddi)%>% 
+  na_if(99999999) %>%
+  na_if(99999998) %>%
+  filter(PERNUM == 1) %>%
+  mutate(URBAN = as_factor(URBAN)) %>%
+  mutate(LIT_HEAD = as_factor(LIT_HEAD))%>%
+  mutate(GEO1_MX = as_factor(GEO1_MX))
+
+
+data_wo_outliers <- data %>%
+  filter(INCEARN_HEAD < 500000)
+```
+
+This dataset includes 2,778,356 household survey respondents.
+
+
+```{r message=FALSE}
+svy_data <- data %>%
+  as_survey_design(weights = HHWT)
+
+svy_data_wo_outliers <- data_wo_outliers %>%
+  as_survey_design(weights = HHWT)
+
+
+```
+
+
+
+```{r message=FALSE}
+household_pop_mean <- svy_data %>%
+  summarise(mean = survey_mean(PERSONS, vartype = c("ci", "var"), na.rm = TRUE))
+
+children_per_household_mean <- svy_data %>%
+  summarise(mean = survey_mean(NCHILD, vartype = c("ci", "var"), na.rm = TRUE))
+
+earnedincome_per_head_mean <- svy_data %>%
+  summarise(mean = survey_mean(INCEARN_HEAD, vartype = c("ci", "var"), na.rm = TRUE))
+
+```
+
+```{r message=FALSE}
+household_pop_quants <- svy_data %>%
+  summarise(quants = survey_quantile(PERSONS, 
+                                     quantiles =  c(0.25, 0.5, 0.75),
+                                     vartype = NULL))
+
+children_per_household_quants <- svy_data %>%
+summarise(quants = survey_quantile(as.numeric(as.factor(NCHILD)),
+                                     quantiles =  c(0.25, 0.5, 0.75),
+                                     vartype = NULL))
+ 
+ 
+earnedincome_per_head_quants <- svy_data %>%
+summarise(quants = survey_quantile(as.numeric(as.factor(INCEARN_HEAD)),
+                                     quantiles =  c(0.25, 0.5, 0.75),
+                                     vartype = NULL))
+
+```
+
+```{r message=FALSE}
+mean_summary <- rbind(household_pop_mean, children_per_household_mean, earnedincome_per_head_mean) %>%
+    mutate(variable = c("Number of household members",
+                      "Number of Children",
+                      "Head of Household's Income"))
+
+quant_summary <- rbind(household_pop_quants, children_per_household_quants, earnedincome_per_head_quants) %>%
+    mutate(variable = c("Number of household members",
+                      "Number of Children",
+                      "Head of Household's Income"))
+
+summary <- left_join(mean_summary, quant_summary) %>%
+  mutate(sd = mean_var^0.5) %>%
+  mutate(IQR = quants_q75 - quants_q25) %>%
+  rename(median = quants_q50) %>%
+  select(variable, mean, mean_low, mean_upp, median, sd, IQR)
+
+kable(summary, digits=2)
+```
+
+## Income histogram
+
+```{r message=FALSE}
+Head_ofhousehold_Incomehist <- svyhist(~INCEARN_HEAD, 
+                                       design = svy_data,
+                                       breaks = 100,
+                                       freq = TRUE)
+
+Head_ofhousehold_Incomehist_df <- tibble(mids = Head_ofhousehold_Incomehist$mids,
+                              counts = Head_ofhousehold_Incomehist$counts)
+
+ggplot(Head_ofhousehold_Incomehist_df) +
+  geom_bar(aes(x = mids, y = counts),
+           stat = "identity") +
+  theme_bw() +
+  scale_x_continuous(name = "Income for Head of Household (Mex$)",
+                     limits = c(0, 500000)) +
+  scale_y_continuous(name = "Estimated number of Households (weighted)")
+```
+
+
+```{r message=FALSE}
+Household_pop_hist <- svyhist(~PERSONS, design = svy_data,
+                            freq = TRUE)
+
+Household_pop_hist_df <- tibble(mids = Household_pop_hist$mids,
+                              counts = Household_pop_hist$counts)
+
+ggplot(Household_pop_hist_df) +
+  geom_bar(aes(x = mids, y = counts),
+           stat = "identity") +
+  theme_bw() +
+  scale_x_continuous(name = "Number of people per household") +
+  scale_y_continuous(name = "Estimated number of Households (weighted)")
+
+Number_of_children_hist <- svyhist(~NCHILD, design = svy_data,
+                            freq = TRUE)
+
+Number_of_children_hist_df <- tibble(mids = Number_of_children_hist$mids,
+                              counts = Number_of_children_hist$counts)
+
+ggplot(Number_of_children_hist_df) +
+  geom_bar(aes(x = mids, y = counts),
+           stat = "identity") +
+  theme_bw() +
+  scale_x_continuous(name = "Number of children per household") +
+  scale_y_continuous(name = "Estimated number of Households (weighted)")
+```
+
+```{r message=FALSE}
+#Categorical Variables
+Urban_Rural <- svy_data %>%
+  group_by(URBAN) %>%
+  summarise(share = survey_prop(vartype = "ci"))
+
+kable(Urban_Rural,digits = 3)
+Head_of_householdliteracy <- svy_data %>%
+  group_by(LIT_HEAD) %>%
+  summarise(share = survey_prop(vartype = "ci"))
+
+kable(Head_of_householdliteracy,digits = 3)
+
+State <- svy_data %>%
+  group_by(GEO1_MX) %>%
+  summarise(share = survey_prop(vartype = "ci"))
+
+kable(State, digits = 3)
+```
+
+```{r message=FALSE}
+ggplot(State) +
+  geom_bar(aes(x = `GEO1_MX`, 
+               y = `share`),
+           stat = "identity") +
+  geom_errorbar(aes(x = `GEO1_MX`, 
+               y = `share`,
+               ymin = `share_low`,
+               ymax = `share_upp`),
+           stat = "identity") +
+  scale_y_continuous(name = "Data contribution by state", labels = scales::percent) +
+  #scale_x_discreet(name = "States in Mexico") +
+  theme_bw()
+
+ggplot(Head_of_householdliteracy) +
+  geom_bar(aes(x = `LIT_HEAD`, 
+               y = `share`),
+           stat = "identity") +
+  geom_errorbar(aes(x = `LIT_HEAD`, 
+               y = `share`,
+               ymin = `share_low`,
+               ymax = `share_upp`),
+           stat = "identity") +
+  scale_y_continuous(name = "Share of Mexican Households",labels = scales::percent) +
+  scale_x_discrete(name = "Head of Household Literacy") +
+  theme_bw()
+
+ggplot(Urban_Rural) +
+  geom_bar(aes(x = `URBAN`, 
+               y = `share`),
+           stat = "identity") +
+  geom_errorbar(aes(x = `URBAN`, 
+               y = `share`,
+               ymin = `share_low`,
+               ymax = `share_upp`),
+           stat = "identity") +
+  scale_y_continuous(name = "Share of Mexican Households",labels = scales::percent) +
+  scale_x_discrete(name = "Urban/Rural Status") +
+  theme_bw()
+```
+
+
+
+Identify one of your continuous variables as your dependent variable. Test the relationship between your dependent variable and each of the other variables in your dataset. Indicate the significance and (if appropriate) the magnitude of each relationship.
+
+If you really want to estimate a model predicting a categorical variable, come talk to me about it well before this assignment is due. I will try to talk you out of it and, failing that, modify your assignment to allow you to use logistic regression.
+
+Dependent Variable: 
+
+Number of Children -NCHILD 
+
+test relationship with: 
+
+Income -INCEARN_HEAD
+Literacy -LIT_HEAD
+Rural-Urban -URBAN
+People in Household -PERSONS
+
+
+#Correlation on continuous variables
+```{r message=FALSE}
+
+corrs <- svycor(~NCHILD + INCEARN_HEAD +PERSONS, design = svy_data, sig.stats = TRUE)
+
+corrs$cors
+
+corrs$p.values
+
+```
+*This correlation shows a relationship between the number of children in a household, the income of the head of the household and the number of people within the same household. 
+*It demonstrates that an increase in the income results in an decrease in children. 
+
+```{r message=FALSE}
+
+corrs_ci_low <- corrs$cors - 1.96*corrs$std.err
+
+corrs_ci_upp <- corrs$cors + 1.96*corrs$std.err
+
+corrs_ci_low
+
+corrs_ci_upp 
+
+```
+
+```{r message=FALSE}
+
+corrs_low_df <- as_tibble(corrs_ci_low) %>%
+  mutate(variable = c("NCHILD", "INCEARN_HEAD", "PERSONS")) %>%
+  rename(NCHILD_low = NCHILD,
+        INCEARN_HEAD_low = INCEARN_HEAD,
+         PERSONS_low = PERSONS)
+
+corrs_upp_df <- as_tibble(corrs_ci_upp) %>%
+  mutate(variable = c("NCHILD", "INCEARN_HEAD", "PERSONS")) %>%
+  rename(NCHILD_upp = NCHILD,
+         INCEARN_HEAD_upp = INCEARN_HEAD,
+         PERSONS_upp = PERSONS)
+
+corrs_pretty_int <- left_join(corrs_low_df, corrs_upp_df) %>%
+  mutate(`NCHILD` = paste(prettyNum(NCHILD_low, digits = 3), 
+                                 " to ", 
+                                 prettyNum(NCHILD_upp, digits = 3))) %>%
+  mutate(`INCEARN_HEAD` = paste(prettyNum(INCEARN_HEAD_low, digits = 3), 
+                                 " to ", 
+                                 prettyNum(INCEARN_HEAD_upp, digits = 3))) %>%
+  mutate(PERSONS = paste(prettyNum(PERSONS_low, digits = 3), 
+                                 " to ", 
+                                 prettyNum(PERSONS_upp, digits = 3))) %>%
+  select(variable, `NCHILD`, `INCEARN_HEAD`, PERSONS)
+  
+kable(corrs_pretty_int)
+
+```
+#Difference in means / regression on categorical variables
+
+
+##Difference in means on categorical variable
+
+
+
+```{r}
+svyttest(NCHILD ~ URBAN, svy_data)
+```
+
+##Regression on categorical variable
+
+```{r}
+
+LIT_MODEL <- svyglm(NCHILD ~ LIT_HEAD, svy_data)
+
+summary(LIT_MODEL)
+
+```
+
+# Multivariate Regression: Assignment 4
+
+*Number of Children -NCHILD 
+*Income -INCEARN_HEAD
+*Literacy -LIT_HEAD
+*Rural-Urban -URBAN
+*People in Household -PERSONS
+
+```{r  message=FALSE, warning=FALSE}
+
+
+full_model <- svyglm(NCHILD ~ LIT_HEAD + INCEARN_HEAD + URBAN + PERSONS, design = svy_data)
+
+summary(full_model)
+
+
+```
+When we control for literacy of Heads of Household, Income for heads of household,number of people in each household and urban-rural status, we find a strong relationship. Holding all other areas constant, an addition of one person per household is associated with in increase of about 0.5 children per household. In other terms, a child is added for every two persons per household. This relationship is significant at a 95% confidence level.
+
+On the other hand, an additional income of 10,000,000 Mexican pesos by heads of household is associated with an increase of 1.791 children. or an increade in income of 11,173,184.4 pesos is associated with an increase of 2 children in the household. This relationship is significant at a 95% confidence level.
+
+Due to high levels of literacy in our data sample. When we control for everything else, Literate heads of households have about 0.1576 children more than non-literate heads of household.This relationship is significant at a 95% confidence level.
+
+Urban/rural settlements was also a significant predictor of number of children. When we control for everything else, Urban households have about 0.1020 children fewer than rural households. This relationship is significant at a 95% confidence level.
+
+
+```{r bivariate plot income vs pop change, message=FALSE, warning=FALSE} 
+
+income_children_plot <- ggplot(data = data, aes(INCEARN_HEAD, NCHILD))+
+  geom_point() + ylim(0, 15)+
+  facet_wrap(vars(GEO1_MX))
+  
+  
+income_children_plot + stat_smooth(
+              method = "lm",
+              formula = y ~ x,
+              geom = "smooth")
+```
+
+# Assignment 5: Transformations
+
+## Mean centering
+
+```{r  message=FALSE, warning=FALSE}
+
+centered_data <- svy_data %>%
+  mutate(INCEARN_HEAD = INCEARN_HEAD - earnedincome_per_head_mean$mean,
+         NCHILD = NCHILD  - children_per_household_mean$mean)
+
+svy_centered <- centered_data %>%
+  as_survey_design(ids = CLUSTER,
+                   strata = STRATA,
+                   weights = PERWT)
+
+
+centered_model <- svyglm(NCHILD ~ LIT_HEAD + INCEARN_HEAD + URBAN + PERSONS, svy_centered)
+
+export_summs(full_model, centered_model, 
+             error_format = "(p = {p.value})",
+             error_pos = "same",
+             model.names = c("Initial", "Centered"))
+
+
+```
+
+## Changing names
+
+*Number of Children -NCHILD 
+*Income -INCEARN_HEAD
+*Literacy -LIT_HEAD
+*Rural-Urban -URBAN
+*People in Household -PERSONS
+
+```{r message=FALSE, warning=FALSE}
+
+coeff_names <- c("Constant" = "(Intercept)",
+                 "Income" = "INCEARN_HEAD",
+                 "Literacy" = "LIT_HEADYes, literate",
+                 "Rural-Urban" = "URBANUrban",
+                 "People in Household" = "PERSONS")
+
+export_summs(full_model, centered_model, 
+             error_format = "(p = {p.value})",
+             error_pos = "same",
+             model.names = c("Initial", "Centered"),
+             coefs = coeff_names)
+
+
+```
+
+## Scaling
+### Income + 10,000 pesos
+
+```{r message=FALSE, warning=FALSE}
+centered_data_scaled <- centered_data %>%
+  mutate(INCEARN_HEAD_10k = INCEARN_HEAD / 10000)
+
+svy_centered_scaled <- centered_data_scaled %>%
+  as_survey_design(ids = CLUSTER,
+                   strata = STRATA,
+                   weights = PERWT)
+
+
+coeff_names_scaled <- c("Constant" = "(Intercept)",
+                 "Income" = "INCEARN_HEAD",
+                  "Income ($10,000s)" = "INCEARN_HEAD_10k",
+                 "Literacy" = "LIT_HEADYes, literate",
+                 "Rural-Urban" = "URBANUrban",
+                 "People in Household" = "PERSONS")
+                   
+centered_model_scaled <- svyglm(NCHILD ~ LIT_HEAD + INCEARN_HEAD_10k + URBAN + PERSONS, svy_centered_scaled)
+
+export_summs(full_model, centered_model, centered_model_scaled, 
+             error_format = "(p = {p.value})",
+             error_pos = "same",
+             model.names = c("Initial", "Centered", "Centered and scaled"),
+             coefs = coeff_names_scaled)
+```
+
+
+## Non-Linear transformations
+
+### Doubling Income
+
+```{r message=FALSE, warning=FALSE}
+
+data_scaled_log <- svy_data %>%
+  mutate(log2_INCEARN_HEAD = log(INCEARN_HEAD + earnedincome_per_head_mean$mean, base = 2))
+
+
+svy_scaled_log <- data_scaled_log %>%
+  as_survey_design(ids = CLUSTER,
+                   strata = STRATA,
+                   weights = PERWT)
+                   
+
+model_scaled_log <- svyglm(NCHILD ~ LIT_HEAD + log2_INCEARN_HEAD + URBAN + PERSONS, svy_scaled_log)
+
+
+coeff_names_scaled_log <- c("Constant" = "(Intercept)",
+                 "Income" = "INCEARN_HEAD",
+                  "Income ($10,000s)" = "INCEARN_HEAD_10k",
+                 " Doubled income" = "log2_INCEARN_HEAD",
+                 "Literacy" = "LIT_HEADYes, literate",
+                 "Rural-Urban" = "URBANUrban",
+                 "People in Household" = "PERSONS")
+
+export_summs(full_model, centered_model, centered_model_scaled, model_scaled_log, 
+             error_format = "(p = {p.value})",
+             error_pos = "same",
+             model.names = c("Initial", "Centered", "Centered and scaled", "Scaled,\nand logged"),
+             coefs = coeff_names_scaled_log)
+
+
+
+```
+
+#### Interpretation
+
+Our data here shows that doubling a head of houshold’s income is likely to increase the number of children by .02. This result is significant at at 99% confidence level.
+
+
+## Interactions
+### Estimating a new model with an interaction between Literacy and People per household
+
+```{r message=FALSE, warning=FALSE}
+
+
+interaction_model <- svyglm(NCHILD ~ LIT_HEAD + log2_INCEARN_HEAD + URBAN + PERSONS + LIT_HEAD:PERSONS, svy_scaled_log)
+
+export_summs(model_scaled_log, interaction_model, 
+             error_format = "(p = {p.value})",
+             error_pos = "same",
+             model.names = c("Non linear Transformation: Dobling Income", "Interaction: Literacy and People per household"))
+
+
+```
+#### Interpretation: 
+
+The coefficient for the interaction term (Literacy and Number of people per household) is significant and positive. It’s the same as the coefficient for the doubled income transformation -our preferred model-, with this we can reasonably assume, with 99.9% confidence, that our dependent variable (NCHILD "Number of children per household") is likely to increase by .02 units.
+
+
+
+# References
+Dong E, Du H, Gardner L. An interactive web-based dashboard to track COVID-19 in real time. Lancet Inf Dis. 20(5):533-534. doi: 10.1016/S1473-3099(20)30120-1
+
+Hamidi, Shima, Sadegh Sabouri, and Reid Ewing. “Does density aggravate the COVID-19 pandemic? Early findings and lessons for planners.” Journal of the American Planning Association 86, no. 4 (2020): 495-509.
+
+MIT Election Data and Science Lab, 2018, “County Presidential Election Returns 2000-2020”, https://doi.org/10.7910/DVN/VOQCHQ, Harvard Dataverse, V9, UNF:6:qSwUYo7FKxI6vd/3Xev2Ng== [fileUNF]
+
+National Center for Health Statistics. “NCHS Urban-Rural Classification Scheme for Counties” 2013. https://www.cdc.gov/nchs/data_access/urban_rural.htm
+
+United States Census Bureau. American Community Survey, 5-year estimates. 2019.
+
+United States Census Bureau. Redistricting Data. 2020.
+
+Walker, Kyle, and Matt Herman (2021). tidycensus: Load US Census Boundary and Attribute Data as ‘tidyverse’ and ‘sf’-Ready Data Frames. R package version 1.1. https://CRAN.R-project.org/package=tidycensus
+
+Wong, David WS, and Yun Li. “Spreading of COVID-19: Density matters.” Plos one 15, no. 12 (2020): e0242398.
